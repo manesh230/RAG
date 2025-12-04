@@ -17,7 +17,7 @@ class DataExtractor:
     def __init__(self):
         self.zip_path = "./data.zip"
         self.extracted_path = "./data_extracted"
-        self.github_url = "https://github.com/Mustehsan-Nisar-Rao/RAG/raw/main/mimic-iv-ext-direct-1.0.zip"
+        self.github_url = "https://github.com/manesh230/RAG/blob/main/mimic-iv-ext-direct-1.0.0.zip"
         
     def download_from_github(self):
         """Download ZIP file from GitHub"""
