@@ -639,7 +639,7 @@ def main():
         2. 🚀 Click 'Initialize System' to build the RAG system
         
         *API key is pre-configured*
-        *Data source: https://github.com/Mustehsan-Nisar-Rao/RAG/raw/main/mimic-iv-ext-direct-1.0.zip*
+        *Data source: https://github.com/manesh230/RAG/blob/main/mimic-iv-ext-direct-1.0.0.zip*
         """)
 
 if __name__ == "__main__":
