@@ -11,7 +11,7 @@ import zipfile
 import io
 
 # Your hardcoded API key
-GEMINI_API_KEY = "AIzaSyApdw7DT1rJC4Nk79c1-fsJ-jR0QeqBmvo"
+GEMINI_API_KEY = "AIzaSyCPYuof1VtfzopQDvfP5h5htv91fIfqNuA"
 
 class DataExtractor:
     def __init__(self):
