@@ -12,7 +12,7 @@ import io
 import re
 
 # Your hardcoded API key
-GEMINI_API_KEY = ""
+GEMINI_API_KEY = "AIzaSyDFxh4wF6oy7F2Khi3twckZa-72cotUxJw"
 
 # Function to detect if question is about robots/machines
 def is_about_robot_machine(question):
