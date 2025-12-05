@@ -9,9 +9,45 @@ import google.generativeai as genai
 import requests
 import zipfile
 import io
+import re
 
 # Your hardcoded API key
 GEMINI_API_KEY = "AIzaSyCPYuof1VtfzopQDvfP5h5htv91fIfqNuA"
+
+# Function to detect if question is about robots/machines
+def is_about_robot_machine(question):
+    """
+    Detect if the question is asking about robots, machines, or non-human entities
+    """
+    question_lower = question.lower()
+    
+    # Keywords that indicate robot/machine context
+    robot_keywords = [
+        'robot', 'machine', 'android', 'cyborg', 'ai system', 'artificial intelligence',
+        'computer system', 'electronic', 'mechanical', 'automaton', 'automated',
+        'hardware', 'software', 'circuit', 'chip', 'processor', 'gadget',
+        'device', 'appliance', 'equipment', 'instrument', 'tool',
+        'non-human', 'non human', 'not human', 'without human'
+    ]
+    
+    # Check for robot/machine keywords
+    for keyword in robot_keywords:
+        if keyword in question_lower:
+            return True
+    
+    # Check for phrases like "in robot" or "for machine"
+    patterns = [
+        r'in (?:a )?(?:robot|machine|android)',
+        r'for (?:a )?(?:robot|machine|android)',
+        r'of (?:a )?(?:robot|machine|android)',
+        r'(?:robot|machine|android)(?:\'s)? (?:symptoms|causes|disease|health)',
+    ]
+    
+    for pattern in patterns:
+        if re.search(pattern, question_lower):
+            return True
+    
+    return False
 
 class DataExtractor:
     def __init__(self):
@@ -24,8 +60,10 @@ class DataExtractor:
         try:
             st.info("📥 Downloading data from GitHub...")
             
-            # Use raw GitHub URL
-            response = requests.get(self.github_url, stream=True)
+            # Use raw GitHub URL - FIXED: Need raw.githubusercontent.com for direct download
+            raw_url = self.github_url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+            
+            response = requests.get(raw_url, stream=True)
             
             if response.status_code == 200:
                 total_size = int(response.headers.get('content-length', 0))
@@ -51,6 +89,19 @@ class DataExtractor:
                 return True
             else:
                 st.error(f"❌ Failed to download file. HTTP Status: {response.status_code}")
+                st.info(f"💡 Trying alternative URL...")
+                
+                # Try alternative URL format
+                alt_url = "https://raw.githubusercontent.com/manesh230/RAG/main/mimic-iv-ext-direct-1.0.0.zip"
+                response = requests.get(alt_url, stream=True)
+                
+                if response.status_code == 200:
+                    with open(self.zip_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    st.success("✅ Successfully downloaded using alternative URL")
+                    return True
                 return False
                 
         except Exception as e:
@@ -465,25 +516,51 @@ class MedicalAI:
         try:
             genai.configure(api_key=api_key)
             # Use a more widely available model
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
         except Exception as e:
             st.error(f"Error initializing Gemini: {e}")
 
     def ask(self, question):
         try:
+            # Check if question is about robots/machines
+            if is_about_robot_machine(question):
+                return """🚫 **No Medical Information Available for Robots/Machines**
+
+This medical knowledge system contains information specifically about **human health and diseases**. 
+
+**Important Notice:**
+- This database contains information about **human beings only**
+- **No data** exists for robots, machines, or artificial systems
+- Medical symptoms, causes, and diseases apply to **biological humans only**
+
+**Human vs. Robot Differences:**
+✅ **Humans:** Have biological symptoms (pain, fever, fatigue)  
+❌ **Robots:** Have technical issues (malfunctions, errors, hardware failures)  
+✅ **Humans:** Experience diseases (infections, chronic conditions)  
+❌ **Robots:** Experience technical faults (software bugs, hardware damage)  
+
+*Please ask about human medical conditions for accurate information.*"""
+            
             # Get relevant context from RAG
             context_chunks = self.rag.query(question, top_k=5)
             context = "\n---\n".join(context_chunks)
 
-            # Create prompt WITHOUT the "what's missing" section
-            prompt = f"""You are a medical expert. Use the following medical context to answer the question accurately and comprehensively.
-
-MEDICAL CONTEXT:
-{context}
-
-QUESTION: {question}
-
-Please provide a comprehensive medical answer based on the context. Focus on the information available in the context."""
+            # Create prompt with emphasis on human context
+            prompt = f"""You are a medical expert specializing in HUMAN medicine. 
+            Use the following medical context to answer the question accurately and comprehensively.
+            
+            **IMPORTANT CONTEXT:** 
+            - All information is about HUMAN BEINGS only
+            - Symptoms and causes apply to biological humans
+            - This is NOT applicable to robots, machines, or artificial systems
+            
+            MEDICAL CONTEXT (HUMAN-ONLY DATA):
+            {context}
+            
+            QUESTION: {question}
+            
+            Please provide a comprehensive medical answer based on HUMAN medicine.
+            If appropriate, mention that this information applies to humans only."""
 
             response = self.model.generate_content(prompt)
             return response.text
@@ -492,13 +569,56 @@ Please provide a comprehensive medical answer based on the context. Focus on the
 
 def main():
     st.set_page_config(
-        page_title="Medical RAG System",
+        page_title="Human Medical Diagnosis System",
         page_icon="🏥",
         layout="wide"
     )
 
-    st.title("🏥 Medical Diagnosis Assistant")
-    st.markdown("Ask medical questions about symptoms, diagnoses, and patient cases")
+    # Custom CSS for clear human vs robot distinction
+    st.markdown("""
+    <style>
+    .human-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .warning-box {
+        background-color: #FEF3C7;
+        border-left: 5px solid #F59E0B;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.5rem;
+    }
+    .info-box {
+        background-color: #E0F2FE;
+        border-left: 5px solid #0EA5E9;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.5rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Human-only banner
+    st.markdown("""
+    <div class="human-banner">
+        <h2>🏥 HUMAN MEDICAL DIAGNOSIS SYSTEM</h2>
+        <p>This system contains information about <strong>HUMAN BEINGS</strong> only. No data for robots or machines.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Warning about robot/machine questions
+    st.markdown("""
+    <div class="warning-box">
+        ⚠️ <strong>Important Notice:</strong> This medical knowledge base contains information about <strong>HUMAN HEALTH</strong> only.
+        Questions about robots, machines, or artificial systems will receive no medical information as they don't apply.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("Ask medical questions about **human** symptoms, diagnoses, and patient cases")
 
     # Initialize session state
     if 'initialized' not in st.session_state:
@@ -511,62 +631,70 @@ def main():
         st.session_state.rag_system = None
 
     # Sidebar for configuration
-    st.sidebar.header("Configuration")
-    
-    # Show API key status (hardcoded, no input needed)
-    st.sidebar.success("🔑 API key configured")
-    
-    # Data extraction section
-    st.sidebar.subheader("📁 Data Setup")
-    
-    if not st.session_state.data_extracted:
-        if st.sidebar.button("📥 Download & Extract Data", type="primary"):
-            with st.spinner("Downloading data from GitHub and extracting..."):
-                extractor = DataExtractor()
-                if extractor.extract_data():
-                    st.session_state.data_extracted = True
-                    st.session_state.extractor = extractor
-                    st.rerun()
+    with st.sidebar:
+        st.header("Configuration")
+        
+        # Show API key status (hardcoded, no input needed)
+        st.sidebar.success("🔑 API key configured")
+        
+        # Data extraction section
+        st.sidebar.subheader("📁 Data Setup")
+        
+        if not st.session_state.data_extracted:
+            if st.sidebar.button("📥 Download & Extract Data", type="primary"):
+                with st.spinner("Downloading data from GitHub and extracting..."):
+                    extractor = DataExtractor()
+                    if extractor.extract_data():
+                        st.session_state.data_extracted = True
+                        st.session_state.extractor = extractor
+                        st.rerun()
 
-    # Initialize system
-    if st.session_state.data_extracted and not st.session_state.initialized:
-        if st.sidebar.button("🚀 Initialize System", type="primary"):
-            try:
-                with st.spinner("🚀 Processing medical data and setting up RAG system... This may take a few minutes."):
-                    # Initialize processor and extract data
-                    processor = SimpleDataProcessor(st.session_state.extractor.extracted_path)
-                    chunks = processor.run()
+        # Initialize system
+        if st.session_state.data_extracted and not st.session_state.initialized:
+            if st.sidebar.button("🚀 Initialize System", type="primary"):
+                try:
+                    with st.spinner("🚀 Processing medical data and setting up RAG system... This may take a few minutes."):
+                        # Initialize processor and extract data
+                        processor = SimpleDataProcessor(st.session_state.extractor.extracted_path)
+                        chunks = processor.run()
 
-                    if not chunks:
-                        st.error("❌ No data was extracted. Please check your data file structure.")
-                        return
+                        if not chunks:
+                            st.error("❌ No data was extracted. Please check your data file structure.")
+                            return
 
-                    # Initialize RAG system
-                    rag_system = SimpleRAGSystem(chunks)
-                    rag_system.create_collections()
-                    rag_system.index_data()
+                        # Initialize RAG system
+                        rag_system = SimpleRAGSystem(chunks)
+                        rag_system.create_collections()
+                        rag_system.index_data()
 
-                    # Initialize Medical AI with hardcoded API key
-                    st.session_state.medical_ai = MedicalAI(rag_system, GEMINI_API_KEY)
-                    st.session_state.rag_system = rag_system
-                    st.session_state.initialized = True
+                        # Initialize Medical AI with hardcoded API key
+                        st.session_state.medical_ai = MedicalAI(rag_system, GEMINI_API_KEY)
+                        st.session_state.rag_system = rag_system
+                        st.session_state.initialized = True
 
-                st.success("✅ System initialized successfully!")
-                st.balloons()
+                    st.success("✅ System initialized successfully!")
+                    st.balloons()
 
-            except Exception as e:
-                st.error(f"❌ Error initializing system: {str(e)}")
+                except Exception as e:
+                    st.error(f"❌ Error initializing system: {str(e)}")
 
     # Main interface
     if st.session_state.initialized and st.session_state.medical_ai:
-        st.header("💬 Medical Query Interface")
+        st.header("💬 Medical Query Interface (Human Patients Only)")
 
-        # Question input
+        # Question input with clear human context
         question = st.text_area(
-            "Enter your medical question:",
-            placeholder="e.g., What are the symptoms of migraine? How is chest pain evaluated? What are risk factors for gastrointestinal bleeding?",
+            "Enter your medical question about HUMAN health:",
+            placeholder="e.g., What are the symptoms of heart disease in humans? How is chest pain evaluated in human patients?",
             height=100
         )
+
+        # Human/Robot detection indicator
+        if question:
+            if is_about_robot_machine(question):
+                st.error("⚠️ **DETECTED:** Question appears to be about robots/machines. Medical information only available for humans.")
+            else:
+                st.success("✅ **DETECTED:** Question appears to be about human health. Proceeding with medical information.")
 
         # Advanced options
         with st.expander("Advanced Options"):
@@ -582,64 +710,91 @@ def main():
                     # Get answer
                     answer = st.session_state.medical_ai.ask(question)
 
-                    # Display answer
-                    st.subheader("🤖 Medical Answer")
+                    # Display answer with appropriate header
+                    if is_about_robot_machine(question):
+                        st.subheader("🤖 Response for Non-Human Query")
+                    else:
+                        st.subheader("👨‍⚕️ Medical Answer for Human Health")
+                    
                     st.markdown(f"**Question:** {question}")
                     st.markdown("**Answer:**")
                     st.write(answer)
 
                     # Show context if requested
-                    if show_context:
-                        st.subheader("📚 Retrieved Context")
+                    if show_context and not is_about_robot_machine(question):
+                        st.subheader("📚 Retrieved Context (Human Medical Data)")
                         context_chunks = st.session_state.rag_system.query(question, top_k=top_k)
                         
-                        for i, chunk in enumerate(context_chunks):
-                            with st.expander(f"Context Chunk {i+1}"):
-                                st.text(chunk[:500] + "..." if len(chunk) > 500 else chunk)
+                        if context_chunks:
+                            for i, chunk in enumerate(context_chunks):
+                                with st.expander(f"Context Chunk {i+1}"):
+                                    st.text(chunk[:500] + "..." if len(chunk) > 500 else chunk)
+                        else:
+                            st.info("No relevant context found in the human medical database.")
 
                 except Exception as e:
                     st.error(f"❌ Error generating answer: {str(e)}")
 
-        # Example questions
-        st.subheader("💡 Example Questions")
-        examples = [
-            "What are the diagnostic criteria for migraine?",
-            "How is chest pain evaluated in emergency settings?",
-            "What are common risk factors for gastrointestinal bleeding?",
-            "Describe the symptoms and diagnosis process for pneumonia",
-            "What are the treatment options for asthma?",
-            "How to diagnose and manage diabetes?"
+        # Example questions - ONLY HUMAN examples
+        st.subheader("💡 Example Questions (Human Health)")
+        human_examples = [
+            "What are the symptoms of heart disease in human beings?",
+            "How is chest pain evaluated in human patients?",
+            "What causes high blood pressure in humans?",
+            "Describe diabetes symptoms in human patients",
+            "What are common causes of headaches in humans?"
         ]
 
+        # Contrast with robot examples
+        with st.expander("❌ What NOT to ask (Robot/Machine Questions)"):
+            st.markdown("""
+            These questions will receive **NO MEDICAL INFORMATION**:
+            - What are the symptoms of heart disease in robots?
+            - What causes headaches in machines?
+            - How is diabetes diagnosed in androids?
+            - What are cancer symptoms for AI systems?
+            """)
+        
         cols = st.columns(2)
-        for i, example in enumerate(examples):
+        for i, example in enumerate(human_examples):
             with cols[i % 2]:
                 if st.button(example, use_container_width=True):
                     st.session_state.last_question = example
                     st.rerun()
 
-        # System info
+        # System info with human-only disclaimer
         with st.expander("📊 System Information"):
+            st.markdown("""
+            **⚠️ IMPORTANT DISCLAIMER:**
+            - This system contains **HUMAN MEDICAL DATA ONLY**
+            - All symptoms, causes, and treatments apply to **biological humans**
+            - **NO INFORMATION** available for robots, machines, or artificial systems
+            """)
+            
             if st.session_state.rag_system:
                 knowledge_count = len([c for c in st.session_state.rag_system.chunks if c['metadata']['type'] == 'knowledge'])
                 narrative_count = len([c for c in st.session_state.rag_system.chunks if c['metadata']['type'] == 'narrative'])
                 reasoning_count = len([c for c in st.session_state.rag_system.chunks if c['metadata']['type'] == 'reasoning'])
                 
-                st.write(f"**Knowledge chunks:** {knowledge_count}")
-                st.write(f"**Case narratives:** {narrative_count}")
-                st.write(f"**Case reasoning:** {reasoning_count}")
-                st.write(f"**Total chunks:** {len(st.session_state.rag_system.chunks)}")
+                st.write(f"**Human medical knowledge chunks:** {knowledge_count}")
+                st.write(f"**Human patient case narratives:** {narrative_count}")
+                st.write(f"**Human diagnostic reasoning:** {reasoning_count}")
+                st.write(f"**Total human medical data chunks:** {len(st.session_state.rag_system.chunks)}")
 
     else:
         st.info("""
-        👋 **Welcome to the Medical RAG System!**
+        👋 **Welcome to the Human Medical RAG System!**
+        
+        This system contains **medical information about HUMAN BEINGS only**.
         
         To get started:
-        1. 📥 Click 'Download & Extract Data' to get medical data from GitHub
+        1. 📥 Click 'Download & Extract Data' to get human medical data
         2. 🚀 Click 'Initialize System' to build the RAG system
         
+        **⚠️ Important:** No medical information available for robots or machines.
+        
         *API key is pre-configured*
-        *Data source: https://github.com/manesh230/RAG/blob/main/mimic-iv-ext-direct-1.0.0.zip*
+        *Data source: Human medical cases only*
         """)
 
 if __name__ == "__main__":
